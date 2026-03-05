@@ -4,20 +4,39 @@ from .models import Cat, Owner, Achievement
 
 
 class AchievementSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Achievement
-        fields = ('id', 'name')
+        fields = ("id", "name")
 
 
 class CatSerializer(serializers.ModelSerializer):
-    owner = serializers.StringRelatedField(read_only=True)
-    # Переопределяем поле achievements
-    achievements = AchievementSerializer(read_only=True, many=True)
+    achievements = AchievementSerializer(many=True, required=False)
+    # Убрали owner = serializers.StringRelatedField(read_only=True)
 
     class Meta:
         model = Cat
-        fields = ('id', 'name', 'color', 'birth_year', 'owner', 'achievements')
+        fields = ("id", "name", "color", "birth_year", "owner", "achievements")
+
+    def create(self, validated_data):
+        # Если в исходном запросе не было поля achievements
+        if "achievements" not in self.initial_data:
+            # То создаём запись о котике без его достижений
+            cat = Cat.objects.create(**validated_data)
+            return cat
+
+        # Иначе делаем следующее:
+        # Уберём список достижений из словаря validated_data и сохраним его
+        achievements = validated_data.pop("achievements")
+        # Сначала добавляем котика в БД
+        cat = Cat.objects.create(**validated_data)
+        # А потом добавляем его достижения в БД
+        for achievement in achievements:
+            current_achievement, status = Achievement.objects.get_or_create(
+                **achievement
+            )
+            # И связываем каждое достижение с этим котиком
+            AchievementCat.objects.create(achievement=current_achievement, cat=cat)
+        return cat
 
 
 class OwnerSerializer(serializers.ModelSerializer):
@@ -25,4 +44,4 @@ class OwnerSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Owner
-        fields = ('first_name', 'last_name', 'cats') 
+        fields = ("first_name", "last_name", "cats")
